@@ -1,0 +1,1 @@
+ALTER TABLE bookings DROP CONSTRAINT bookings_user_id_event_id_key;

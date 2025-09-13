@@ -18,7 +18,7 @@ func NewRouter(db *pgxpool.Pool, logger *slog.Logger, jwtSecret string) http.Han
 	r := chi.NewRouter()
 
 	corsMiddleware := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"}, // For development, allow all. For production, restrict this.
+		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		AllowCredentials: true,
@@ -32,10 +32,11 @@ func NewRouter(db *pgxpool.Pool, logger *slog.Logger, jwtSecret string) http.Han
 
 	userRepo := &data.UserRepository{DB: db}
 	eventRepo := &data.EventRepository{DB: db}
-	bookingRepo := &data.BookingRepository{DB: db}
+	dataBookingRepo := &data.BookingRepository{DB: db}
+	bookingRepoWithTx := &service.BookingRepositoryWithTx{DB: db, BookingRepository: dataBookingRepo}
 
 	authService := service.NewAuthService(userRepo, jwtSecret)
-	bookingService := service.NewBookingService(bookingRepo, logger)
+	bookingService := service.NewBookingService(bookingRepoWithTx, logger)
 
 	authHandler := handler.NewAuthHandler(authService, logger)
 	eventHandler := handler.NewEventHandler(eventRepo)
@@ -52,10 +53,13 @@ func NewRouter(db *pgxpool.Pool, logger *slog.Logger, jwtSecret string) http.Han
 		r.With(middleware.JWTAuth(jwtSecret)).Post("/{id}/book", bookingHandler.CreateBooking)
 	})
 
+	r.Route("/bookings", func(r chi.Router) {
+		r.With(middleware.JWTAuth(jwtSecret)).Delete("/{id}", bookingHandler.CancelBooking)
+	})
+
 	r.Route("/admin", func(r chi.Router) {
 		r.Use(middleware.JWTAuth(jwtSecret))
 		r.Use(middleware.AdminOnly)
-
 		r.Post("/events", eventHandler.CreateEvent)
 	})
 

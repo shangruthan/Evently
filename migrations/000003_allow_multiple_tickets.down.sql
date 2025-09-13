@@ -1,0 +1,1 @@
+ALTER TABLE bookings ADD CONSTRAINT bookings_user_id_event_id_key UNIQUE (user_id, event_id);

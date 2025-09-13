@@ -15,9 +15,12 @@
         hr { border: 0; border-top: 1px solid #eee; margin: 1.5rem 0; }
         #events-list { list-style: none; padding: 0; }
         #events-list li { background: #fafafa; border: 1px solid #eee; padding: 1rem; margin-bottom: 1rem; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .booking-form { display: flex; gap: 0.5rem; align-items: center; }
+        .booking-form input { width: 50px; }
         #status { padding: 1rem; border-radius: 4px; margin-top: 1rem; text-align: center; }
         .status-success { background-color: #d4edda; color: #155724; }
         .status-error { background-color: #f8d7da; color: #721c24; }
+        .status-info { background-color: #cce5ff; color: #004085; }
     </style>
 </head>
 <body>
@@ -78,21 +81,23 @@
         let userRole = null;
 
         // --- DOM Elements ---
+        const eventsList = document.getElementById('events-list');
+        const statusDiv = document.getElementById('status');
+        // ... other elements ...
         const registerForm = document.getElementById('register-form');
         const loginForm = document.getElementById('login-form');
         const logoutButton = document.getElementById('logout-button');
         const createEventForm = document.getElementById('create-event-form');
-        const eventsList = document.getElementById('events-list');
-        const statusDiv = document.getElementById('status');
         const authSection = document.getElementById('auth-section');
         const userSection = document.getElementById('user-section');
         const adminPanel = document.getElementById('admin-panel');
         const welcomeMessage = document.getElementById('welcome-message');
 
+
         // --- Helper Functions ---
-        function showStatus(message, isError = false) {
+        function showStatus(message, type = 'success') {
             statusDiv.textContent = message;
-            statusDiv.className = isError ? 'status-error' : 'status-success';
+            statusDiv.className = `status-${type}`;
             setTimeout(() => statusDiv.textContent = '', 5000);
         }
 
@@ -104,18 +109,14 @@
                     return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
                 }).join(''));
                 return JSON.parse(jsonPayload);
-            } catch (e) {
-                return null;
-            }
+            } catch (e) { return null; }
         }
         
         function updateUIForLogin(email, role) {
             authSection.style.display = 'none';
             userSection.style.display = 'block';
             welcomeMessage.textContent = `Welcome, ${email}!`;
-            if (role === 'admin') {
-                adminPanel.style.display = 'block';
-            }
+            if (role === 'admin') adminPanel.style.display = 'block';
         }
         
         function updateUIForLogout() {
@@ -142,7 +143,10 @@
                                 <small>${event.venue} on ${eventDate}</small><br>
                                 <small>Tickets left: ${event.capacity - event.booked_tickets}</small>
                             </div>
-                            <button class="book-btn" data-event-id="${event.id}">Book Ticket</button>
+                            <form class="booking-form" data-event-id="${event.id}">
+                                <input type="number" class="quantity-input" value="1" min="1" max="${event.capacity - event.booked_tickets}">
+                                <button type="submit">Book</button>
+                            </form>
                         `;
                         eventsList.appendChild(li);
                     });
@@ -150,30 +154,40 @@
                     eventsList.innerHTML = '<p>No upcoming events found.</p>';
                 }
             } catch (error) {
-                showStatus(error.message, true);
+                showStatus(error.message, 'error');
                 eventsList.innerHTML = '<p>Could not load events.</p>';
             }
         }
         
-        async function bookEvent(eventId) {
+        async function bookEvent(eventId, quantity) {
             if (!jwtToken) {
-                showStatus('You must be logged in to book a ticket.', true);
+                showStatus('You must be logged in to book a ticket.', 'error');
                 return;
             }
             try {
                 const response = await fetch(`${API_BASE_URL}/events/${eventId}/book`, {
                     method: 'POST',
-                    headers: { 'Authorization': `Bearer ${jwtToken}` }
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${jwtToken}` 
+                    },
+                    body: JSON.stringify({ quantity })
                 });
                 const result = await response.json();
+                
+                if (response.status === 202) {
+                    showStatus(result.data.status, 'info');
+                    return;
+                }
+                
                 if (!response.ok) throw new Error(result.error.message || 'Booking failed');
-                showStatus('Booking successful!');
+                showStatus(`Successfully booked ${quantity} ticket(s)!`);
                 fetchEvents();
             } catch (error) {
-                showStatus(`Booking failed: ${error.message}`, true);
+                showStatus(`Booking failed: ${error.message}`, 'error');
             }
         }
-
+        // ... other API functions (createEvent, login, register) are the same ...
         async function createEvent(eventData) {
             try {
                 const response = await fetch(`${API_BASE_URL}/admin/events`, {
@@ -190,7 +204,7 @@
                 createEventForm.reset();
                 fetchEvents();
             } catch (error) {
-                showStatus(`Event creation failed: ${error.message}`, true);
+                showStatus(`Event creation failed: ${error.message}`, 'error');
             }
         }
 
@@ -211,7 +225,7 @@
                 showStatus('Registration successful! You can now log in.');
                 registerForm.reset();
             } catch (error) {
-                showStatus(`Registration failed: ${error.message}`, true);
+                showStatus(`Registration failed: ${error.message}`, 'error');
             }
         });
 
@@ -235,7 +249,7 @@
                 loginForm.reset();
                 updateUIForLogin(email, userRole);
             } catch (error) {
-                showStatus(`Login failed: ${error.message}`, true);
+                showStatus(`Login failed: ${error.message}`, 'error');
             }
         });
         
@@ -246,10 +260,12 @@
             showStatus('You have been logged out.');
         });
         
-        eventsList.addEventListener('click', (e) => {
-            if (e.target.classList.contains('book-btn')) {
+        eventsList.addEventListener('submit', (e) => {
+            if (e.target.classList.contains('booking-form')) {
+                e.preventDefault();
                 const eventId = e.target.getAttribute('data-event-id');
-                bookEvent(eventId);
+                const quantity = parseInt(e.target.querySelector('.quantity-input').value);
+                bookEvent(eventId, quantity);
             }
         });
 
