@@ -40,7 +40,7 @@ func NewRouter(db *pgxpool.Pool, logger *slog.Logger, jwtSecret string) http.Han
 
 	authHandler := handler.NewAuthHandler(authService, logger)
 	eventHandler := handler.NewEventHandler(eventRepo)
-	bookingHandler := handler.NewBookingHandler(bookingService)
+	bookingHandler := handler.NewBookingHandler(bookingService, logger) // Changed this line
 
 	r.Route("/auth", func(r chi.Router) {
 		r.Post("/register", authHandler.Register)
@@ -53,8 +53,11 @@ func NewRouter(db *pgxpool.Pool, logger *slog.Logger, jwtSecret string) http.Han
 		r.With(middleware.JWTAuth(jwtSecret)).Post("/{id}/book", bookingHandler.CreateBooking)
 	})
 
+	// Inside the NewRouter function, change the /bookings route
 	r.Route("/bookings", func(r chi.Router) {
-		r.With(middleware.JWTAuth(jwtSecret)).Delete("/{id}", bookingHandler.CancelBooking)
+		r.Use(middleware.JWTAuth(jwtSecret))
+		r.Get("/", bookingHandler.GetUserBookings)
+		r.Post("/{id}/cancel", bookingHandler.CancelBooking) // Change this line
 	})
 
 	r.Route("/admin", func(r chi.Router) {

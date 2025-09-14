@@ -1,0 +1,2 @@
+# In a separate terminal:
+docker-compose exec db psql -U user -d evently -c "UPDATE users SET role = 'admin' WHERE email = 'your-admin-email@example.com';"
