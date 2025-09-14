@@ -12,7 +12,7 @@ import (
 var (
 	ErrEventSoldOut    = errors.New("not enough tickets available")
 	ErrBookingConflict = errors.New("booking conflict, please try again")
-	ErrJoinWaitlist    = errors.New("tickets are reserved for the waitlist, please join the waitlist")
+	ErrJoinWaitlist    = errors.New("tickets are reserved for the waitlist, you have been added to the queue")
 	ErrAddedToWaitlist = errors.New("not enough tickets available, you have been added to the waitlist")
 	MaxRetries         = 3
 )
@@ -47,18 +47,20 @@ func (s *BookingService) CreateBooking(ctx context.Context, eventID, userID stri
 			return err
 		}
 
+		if hasWaitlist && (event.BookedTickets < event.Capacity) {
+			// This case is for when a ticket is cancelled, but a waitlist still exists.
+			// The spot should be reserved for the waitlist.
+			if err := s.repo.AddToWaitlist(ctx, eventID, userID, quantity); err != nil {
+				return err
+			}
+			return ErrJoinWaitlist
+		}
+
 		if (event.BookedTickets + quantity) > event.Capacity {
 			if err := s.repo.AddToWaitlist(ctx, eventID, userID, quantity); err != nil {
 				return err
 			}
 			return ErrAddedToWaitlist
-		}
-
-		if hasWaitlist {
-			if err := s.repo.AddToWaitlist(ctx, eventID, userID, quantity); err != nil {
-				return err
-			}
-			return ErrJoinWaitlist
 		}
 
 		err = s.repo.CreateBooking(ctx, event, userID, quantity)
@@ -80,6 +82,7 @@ func (s *BookingService) CancelBooking(ctx context.Context, bookingID, userID st
 	if quantity <= 0 {
 		return errors.New("quantity to cancel must be positive")
 	}
+	// This is the corrected logic: a simple, direct pass-through to the repository layer.
 	return s.repo.CancelBooking(ctx, bookingID, userID, quantity)
 }
 
@@ -112,11 +115,9 @@ func (r *BookingRepositoryWithTx) CancelBooking(ctx context.Context, bookingID, 
 			return err
 		}
 		if waitlister == nil {
-			break // No more matching entries on the waitlist
+			break
 		}
 
-		// A user from the waitlist gets their tickets.
-		// We don't need to change event.booked_tickets, it's just a transfer.
 		insertQuery := `INSERT INTO bookings (user_id, event_id, quantity) VALUES ($1, $2, $3)`
 		if _, err := tx.Exec(ctx, insertQuery, waitlister.UserID, eventID, waitlister.Quantity); err != nil {
 			return err

@@ -99,7 +99,11 @@ func (r *BookingRepository) CreateBooking(ctx context.Context, event *EventForUp
 }
 
 func (r *BookingRepository) AddToWaitlist(ctx context.Context, eventID, userID string, quantity int) error {
-	query := `INSERT INTO waitlist_entries (event_id, user_id, quantity) VALUES ($1, $2, $3)`
+	// This is the corrected query
+	query := `
+        INSERT INTO waitlist_entries (event_id, user_id, quantity) VALUES ($1, $2, $3)
+        ON CONFLICT (user_id, event_id) DO NOTHING
+    `
 	_, err := r.DB.Exec(ctx, query, eventID, userID, quantity)
 	return err
 }
@@ -150,11 +154,6 @@ func (r *BookingRepository) FindAndRemoveMatchingWaitlistEntry(ctx context.Conte
 		return nil, err
 	}
 	return &user, nil
-}
-
-func (r *BookingRepository) IncrementEventTickets(ctx context.Context, tx pgx.Tx, eventID string, quantity int) error {
-	_, err := tx.Exec(ctx, "UPDATE events SET booked_tickets = booked_tickets + $2, version = version + 1 WHERE id = $1", eventID, quantity)
-	return err
 }
 
 func (r *BookingRepository) DecrementEventTickets(ctx context.Context, tx pgx.Tx, eventID string, quantity int) error {
